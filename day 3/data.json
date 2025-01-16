@@ -1,0 +1,14 @@
+[
+    {
+        "id": 1,
+        "goal1": "learn backend"
+    },
+    {
+        "goal2": "clear dsa backlogs",
+        "id": 2
+    },
+    {
+        "goal3": "Complete one frontend project",
+        "id": 3
+    }
+]
