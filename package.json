@@ -1,6 +1,8 @@
 {
   "dependencies": {
-    "nodemon": "^3.1.9"
+    "express": "^4.21.2",
+    "nodemon": "^3.1.9",
+    "pg": "^8.13.1"
   },
   "name": "day2",
   "version": "1.0.0",
