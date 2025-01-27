@@ -4,12 +4,11 @@ require('dotenv').config();
 const express = require("express");
 const app = express();
 const PORT = 20304;
-
 app.use(express.json());
 
+
+
 const { Client } = require("pg");
-
-
 
 const client = new Client({
 
