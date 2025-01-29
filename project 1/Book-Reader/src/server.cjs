@@ -7,67 +7,60 @@ require("dotenv").config();
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 
-const client = new Client({
-    user: process.env.DB_USER,
-    host: process.env.DB_HOST,
-    database: process.env.DB_DATABASE,
-    password: process.env.DB_PASSWORD,
-    port: process.env.DB_PORT,
-    ssl: { rejectUnauthorized: false },
-});
-
 const app = express();
 app.use(express.json());
 
-const port = 3022;
+const PORT = process.env.DB_PORT;
+console.log(ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, PORT);
 
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+const cors = require('cors');
 
-// Application-Level Middleware
-function defaultMiddleware(req, res, next) {
-    console.log("Default middleware executed");
-    console.log(`Request Method: ${req.method} and Request URL: ${req.url}`);
-    next();
-}
+app.use(cors({
+  origin: [ 'http://localhost:5174'], 
+}));
 
-app.use(defaultMiddleware);
 
-// Route-Level Middleware for License Check
-function authorizeCheck(req, res, next) {
-    if (!req.query.license) {
-        console.log("Please provide your license");
-        return res.status(400).json({ message: "License not provided" });
-    } else if (req.query.license !== "JTD") {
-        console.log("Sorry!!! You don't have access");
-        return res.status(400).json({ message: "Permissions Denied" });
-    } else {
-        next();
+let client;
+
+const connectToDatabase = async () => {
+    if (!client) {
+        client = new Client({
+            user: process.env.DB_USER,
+            host: process.env.DB_HOST,
+            database: process.env.DB_DATABASE,
+            password: process.env.DB_PASSWORD,
+            port: process.env.DB_PORT,
+            ssl: { rejectUnauthorized: false },
+        });
+
+        try {
+            await client.connect();
+            console.log("Connected to the database successfully");
+        } catch (error) {
+            console.error("Error connecting to the database:", error);
+            throw error;
+           }
     }
-}
 
-// Test Routes
-app.get("/", (req, res) => {
-    res.status(200).json({ message: "Welcome To Express JS course" });
-});
-
-app.get("/authorize-license", authorizeCheck, (req, res) => {
-    res.status(200).json({ message: "Welcome To JTD Backend Course" });
-});
-
-client.connect();
+    return client;
+};
 
 // Register Route
-app.post("/register", async (req, res) => {
+app.post("/api/register", async (req, res) => {
     const { name, email, role, password } = req.body;
 
     try {
+        await connectToDatabase();  
+        const userExists = await client.query(`SELECT * FROM Users WHERE email = $1`, [email]);
+        if (userExists.rows.length > 0) {
+            return res.status(400).json({ message: "User already exists" });
+        }
+
         const hashedPassword = await bcrypt.hash(password, 12);
         const query = `INSERT INTO Users (name, email, role, password) VALUES ($1, $2, $3, $4)`;
         await client.query(query, [name, email, role, hashedPassword]);
 
-        res.status(201).json({ message: "User registered successfully!!!" });
+        res.status(201).json({ message: "User registered successfully!" });
     } catch (error) {
         console.error("Error during registration:", error);
         res.status(500).json({ message: "Internal server error" });
@@ -76,10 +69,11 @@ app.post("/register", async (req, res) => {
 
 // Authenticate User Middleware
 async function authenticateUser(req, res, next) {
-    const { name, password } = req.body;
+    const { email, password } = req.body;
 
     try {
-        const users = await client.query(`SELECT * FROM Users WHERE name = $1`, [name]);
+        await connectToDatabase();
+        const users = await client.query(`SELECT * FROM Users WHERE email = $1`, [email]);
         if (users.rows.length > 0) {
             const user = users.rows[0];
             const match = await bcrypt.compare(password, user.password);
@@ -99,10 +93,10 @@ async function authenticateUser(req, res, next) {
 }
 
 // Login Route
-app.post("/login", authenticateUser, (req, res) => {
+app.post("/api/login", authenticateUser, (req, res) => {
     try {
         const user = req.user;
-        const token = jwt.sign({ userName: user.name, userEmail: user.email }, ACCESS_TOKEN_SECRET, {
+        const token = jwt.sign({ userId: user.id, userName: user.name, userEmail: user.email, userRole: user.role }, ACCESS_TOKEN_SECRET, {
             expiresIn: "3h",
         });
 
@@ -132,10 +126,20 @@ function authorizeUser(req, res, next) {
 }
 
 // Protected Route
-app.get("/profile", authorizeUser, (req, res) => {
+app.get("/api/profile", authorizeUser, (req, res) => {
     const user = req.user;
     return res.status(200).json({
-        message: `Welcome Back, ${user.userName}`,
-        user,
+        role: user.userRole,
     });
 });
+
+// Start the server after connecting to the database
+connectToDatabase()
+    .then(() => {
+        app.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+        });
+    })
+    .catch((error) => {
+        console.error("Error connecting to the database:", error);
+    });
