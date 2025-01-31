@@ -143,3 +143,63 @@ connectToDatabase()
     .catch((error) => {
         console.error("Error connecting to the database:", error);
     });
+
+
+
+    app.post("/api/addBook", async (req, res) => {
+        const data = req.body;
+        try {
+            await connectToDatabase();
+            const { book_id, book_name, price, rented_status, customer_name } = data;
+            await client.query(
+                `INSERT INTO BooksAdmin (book_id, book_name, price, rented_status, customer_name) 
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [book_id, book_name, price, rented_status, customer_name]
+            );
+            res.status(201).json({ message: "Book details added successfully" });
+        } catch (error) {
+            console.error("Error while adding book: ", error.message);
+            res.status(500).json({ message: "Error while adding book", error: error.message });
+        }
+    });
+    
+    app.get("/api/getBook", async (req, res) => {
+        try {
+            await connectToDatabase();
+            const result = await client.query("SELECT * FROM BooksAdmin");
+            if (result.rows.length === 0) {
+                return res.status(404).json({ message: "No books found" });
+            }
+            res.status(200).json({ books: result.rows });
+        } catch (error) {
+            console.error("Error while fetching books: ", error.message);
+            res.status(500).json({ message: "Error while connecting to database", error: error.message });
+        }
+    });
+    
+    app.put("/api/updateBook/:id", async (req, res) => {
+        const book_id = parseInt(req.params.id);
+        const updates = req.body;
+        const updateFields = ["price", "rented_status", "customer_name"];
+        
+        const updateKeys = Object.keys(updates).filter((key) => updateFields.includes(key));
+        const data = updateKeys.map((key, index) => `${key} = $${index + 1}`);
+        const values = updateKeys.map((key) => updates[key]); 
+        values.push(book_id);  
+    
+        try {
+            await connectToDatabase();
+            const query = `UPDATE BooksAdmin SET ${data.join(", ")} WHERE book_id = $${values.length} RETURNING *`;
+            const result = await client.query(query, values);
+    
+            if (result.rows.length === 0) {
+                return res.status(404).json({ message: "Book not found" });
+            }
+    
+            res.status(200).json({ message: "Book details updated successfully", updatedBook: result.rows[0] });
+        } catch (error) {
+            console.error("Error while updating book: ", error.message);
+            res.status(500).json({ message: "Error while updating book", error: error.message });
+        }
+    });
+    
